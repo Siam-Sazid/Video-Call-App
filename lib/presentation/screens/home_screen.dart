@@ -8,8 +8,7 @@ import '../../domain/usecases/toggle_audio_usecase.dart';
 import '../../domain/usecases/toggle_video_usecase.dart';
 import '../../domain/usecases/switch_camera_usecase.dart';
 import '../controllers/call_controller.dart';
-import 'video_call_screen.dart'; // keep, unused temporarily
-import 'video_call_test_screen.dart';
+import 'video_call_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,12 +23,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _joinCall() {
     if (!_formKey.currentState!.validate()) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => VideoCallTestScreen(channelName: _channelController.text.trim()),
-      ),
-    );
+    final channelName = _channelController.text.trim();
+    final agoraService = AgoraService();
+    final repo = CallRepositoryImpl(agoraService);
+    Get.put(CallController(
+      repository: repo,
+      agoraService: agoraService,
+      joinChannel: JoinChannelUseCase(repo),
+      leaveChannel: LeaveChannelUseCase(repo),
+      toggleAudio: ToggleAudioUseCase(repo),
+      toggleVideo: ToggleVideoUseCase(repo),
+      switchCamera: SwitchCameraUseCase(repo),
+    ));
+    Get.to(() => VideoCallScreen(channelName: channelName));
   }
 
   @override

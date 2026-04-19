@@ -30,12 +30,15 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     Get.back();
   }
 
-  Widget _buildRemoteVideo() {
+  // Watches only remoteUid + isLocalJoined — never rebuilds due to isCameraOff.
+  // Returns AgoraVideoView directly with no extra Stack wrapper.
+  Widget _buildBackground() {
     return Obx(() {
       final uid = _controller.remoteUid.value;
-      appLogger.d('[VideoCallScreen] _buildRemoteVideo — remoteUid: $uid');
+      final joined = _controller.isLocalJoined.value;
+
       if (uid != null) {
-        appLogger.i('[VideoCallScreen] Rendering remote AgoraVideoView for uid: $uid');
+        appLogger.i('[VideoCallScreen] Background: remote uid $uid');
         return AgoraVideoView(
           controller: VideoViewController.remote(
             rtcEngine: _controller.engine,
@@ -44,49 +47,22 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
           ),
         );
       }
-      return Container(
-        color: const Color(0xFF0F3460),
-        child: const Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: Color(0xFF6C63FF)),
-              SizedBox(height: 16),
-              Text(
-                'Waiting for others to join...',
-                style: TextStyle(color: Colors.white54),
-              ),
-            ],
-          ),
-        ),
-      );
-    });
-  }
 
-  Widget _buildLocalVideo() {
-    return Obx(() {
-      final ready = _controller.isEngineReady.value;
-      final camOff = _controller.isCameraOff.value;
-      appLogger.d('[VideoCallScreen] _buildLocalVideo — isEngineReady: $ready, isCameraOff: $camOff');
-      if (!ready) return const SizedBox.shrink();
-      appLogger.i('[VideoCallScreen] Rendering local AgoraVideoView');
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          AgoraVideoView(
-            controller: VideoViewController(
-              rtcEngine: _controller.engine,
-              canvas: const VideoCanvas(uid: 0),
-            ),
+      if (!joined) {
+        return Container(
+          color: const Color(0xFF16213E),
+          child: const Center(
+            child: Icon(Icons.videocam, color: Colors.white38, size: 48),
           ),
-          if (camOff)
-            Container(
-              color: const Color(0xFF16213E),
-              child: const Center(
-                child: Icon(Icons.videocam_off, color: Colors.white38, size: 32),
-              ),
-            ),
-        ],
+        );
+      }
+
+      appLogger.i('[VideoCallScreen] Background: local video');
+      return AgoraVideoView(
+        controller: VideoViewController(
+          rtcEngine: _controller.engine,
+          canvas: const VideoCanvas(uid: 0),
+        ),
       );
     });
   }
@@ -97,17 +73,71 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          Positioned.fill(child: _buildRemoteVideo()),
+          // Layer 1: video background
+          Positioned.fill(child: _buildBackground()),
+
+          // Layer 2: camera-off overlay for fullscreen local video
+          Positioned.fill(
+            child: Obx(() {
+              final solo = _controller.remoteUid.value == null;
+              final joined = _controller.isLocalJoined.value;
+              final camOff = _controller.isCameraOff.value;
+              if (!camOff || !solo || !joined) return const SizedBox.shrink();
+              return Container(
+                color: const Color(0xFF16213E),
+                child: const Center(
+                  child: Icon(Icons.videocam_off, color: Colors.white38, size: 48),
+                ),
+              );
+            }),
+          ),
+
+          // Layer 3: local pip — Positioned is outside Obx, not inside it
           Positioned(
             top: 48,
             right: 16,
             width: 100,
             height: 140,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: _buildLocalVideo(),
-            ),
+            child: Obx(() {
+              final uid = _controller.remoteUid.value;
+              final joined = _controller.isLocalJoined.value;
+              if (uid == null || !joined) return const SizedBox.shrink();
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: AgoraVideoView(
+                  controller: VideoViewController(
+                    rtcEngine: _controller.engine,
+                    canvas: const VideoCanvas(uid: 0),
+                  ),
+                ),
+              );
+            }),
           ),
+
+          // Layer 4: camera-off overlay for pip
+          Positioned(
+            top: 48,
+            right: 16,
+            width: 100,
+            height: 140,
+            child: Obx(() {
+              final uid = _controller.remoteUid.value;
+              final joined = _controller.isLocalJoined.value;
+              final camOff = _controller.isCameraOff.value;
+              if (uid == null || !joined || !camOff) return const SizedBox.shrink();
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  color: const Color(0xFF16213E),
+                  child: const Center(
+                    child: Icon(Icons.videocam_off, color: Colors.white38, size: 24),
+                  ),
+                ),
+              );
+            }),
+          ),
+
+          // Layer 5: channel name badge
           Positioned(
             top: 48,
             left: 16,
@@ -130,13 +160,15 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
               ),
             ),
           ),
-          Obx(() {
-            final uid = _controller.remoteUid.value;
-            if (uid == null) return const SizedBox.shrink();
-            return Positioned(
-              top: 100,
-              left: 16,
-              child: Container(
+
+          // Layer 6: remote UID badge — Positioned outside Obx
+          Positioned(
+            top: 100,
+            left: 16,
+            child: Obx(() {
+              final uid = _controller.remoteUid.value;
+              if (uid == null) return const SizedBox.shrink();
+              return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.black45,
@@ -146,9 +178,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                   'UID: $uid',
                   style: const TextStyle(color: Colors.white54, fontSize: 11),
                 ),
-              ),
-            );
-          }),
+              );
+            }),
+          ),
+
+          // Layer 7: control bar
           Positioned(
             bottom: 0,
             left: 0,
