@@ -64,9 +64,12 @@ class AgoraService {
   }
 
   Future<void> joinChannel(String channelName) async {
+    final token = AgoraConfig.tempToken;
+    final mode = (token.isEmpty) ? 'TEST MODE (no token)' : 'TOKEN MODE (temp token)';
+    appLogger.i('[AgoraService] Auth mode: $mode');
     appLogger.i('[AgoraService] Joining channel: "$channelName"');
     await _engine!.joinChannel(
-      token: '',
+      token: token,
       channelId: channelName,
       uid: 0,
       options: const ChannelMediaOptions(
